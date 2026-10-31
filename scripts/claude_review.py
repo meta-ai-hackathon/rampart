@@ -824,6 +824,7 @@ LOCKFILE_NAMES = frozenset(
         "package-lock.json",
         "npm-shrinkwrap.json",
         "yarn.lock",
+        "bun.lock",
         "bun.lockb",
         "poetry.lock",
         "pipfile.lock",
@@ -852,14 +853,18 @@ SECRET_FILE_REASON = "file that usually holds secrets"
 DATA_FILE_REASON = "data file, which could hold personal data"
 NO_DIFF_REASON = "GitHub sent no diff for it (a binary, empty, or very large file)"
 
+# Rampart's library code is the PII boundary, so its modules (src/session.ts,
+# src/guard.ts, src/policy.ts and the rest) come first, with anything that
+# names serialization, encrypted storage (a vault), secrets or telemetry.
 BOUNDARY_HINTS = (
-    "vault", "telemetry", "honesty", "serialize", "auth", "session", "secret", "token",
-    "crypt", "consent", "fax", "signature", "pii", "redact", "permission", "migrat",
+    "serialize", "session", "token", "guard", "policy", "premask", "heuristic", "validator",
+    "stream", "worker", "classifier", "types", "pii", "redact", "vault", "crypt", "secret",
+    "auth", "permission", "telemetry", "migrat",
 )  # fmt: skip
 MANIFEST_NAMES = frozenset(
     {
         "package.json",
-        "pnpm-workspace.yaml",
+        "bunfig.toml",
         "requirements.txt",
         "requirements-dev.txt",
         "requirements-review.txt",
