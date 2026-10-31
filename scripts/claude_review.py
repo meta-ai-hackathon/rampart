@@ -77,7 +77,7 @@ the comment.
 Local dry run (reads real PR data, never writes to GitHub, never calls the
 model, needs no Anthropic key; uses GH_TOKEN or the gh CLI login):
 
-    python3 scripts/claude_review.py --repo meta-ai-hackathon/meta-hack --pr 37 --dry-run
+    python3 scripts/claude_review.py --repo meta-ai-hackathon/rampart --pr 1 --dry-run
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ REPO_ROOT = SCRIPT_PATH.parent.parent
 RULES_PATH = Path(".github") / "claude-review" / "rules.md"
 AGENTS_PATH = Path("AGENTS.md")
 
-# --- model settings (see the claude-api notes in the PR) ------------------
+# --- model settings (see the claude-api notes in meta-hack PR 43) ---------
 
 MODEL: Final = "claude-opus-5-5"
 # Opus 5.5 defaults to medium effort; code review is worth high.
@@ -185,7 +185,7 @@ DRY_RUN_OUTPUT_RANGE = (3_000, 12_000)
 
 API_URL = "https://api.github.com"
 SERVER_URL = "https://github.com"
-USER_AGENT = "meta-hack-claude-review/1.0"
+USER_AGENT = "rampart-claude-review/1.0"
 GITHUB_TIMEOUT_SECONDS = 30.0
 MAX_PAGES = 40  # 4,000 comments, reviews or issue events, at 100 per page
 REPO_PATTERN = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
@@ -977,7 +977,7 @@ def secret_file_finding(path: str) -> Finding:
         ),
         fix=(
             "Remove the file from the branch, rotate any credential it held, and keep real values "
-            "in the gitignored .env (document new names in .env.example)."
+            "out of the repo, in Actions secrets for CI and in your shell environment locally."
         ),
         source="file rule",
     )
@@ -1057,12 +1057,12 @@ def plan_review(pr: PullRequest, files: Sequence[ChangedFile], budget: int) -> R
 # --- prompt (pure) ---------------------------------------------------------------------
 
 FALLBACK_RULES = """\
-P1, must fix before merge: a PII leak or PII boundary break, secret exposure, a security hole, data loss or a broken migration, tests deleted or weakened, eligibility promises or "submitted" copy that breaks the honesty rules, or anything that would break main.
+P1, must fix before merge: a PII leak or PII boundary break (raw PII or a serialized session table that is logged, committed, sent off the device, or put in an error message), secret exposure, a security hole, a deserialize change that no longer fails closed, data loss, tests deleted or weakened, or anything that would break main.
 P2, should fix soon: real bugs and risks that do not block a merge.
 P3: nits."""
 
 SYSTEM_PROMPT = """\
-You review pull requests for the {repo} repository. It builds a benefits application companion (Tenet, in src/ as Benefits Navigator) that will handle real people's public-benefits information. Coding agents open and merge many of these pull requests on their own, so your review is often the only check between their code and main.
+You review pull requests for the {repo} repository. It is a fork of Rampart, an on-device PII redaction library: it finds personal data in text a person types, swaps each value for a placeholder before the text leaves the device, and keeps the table that maps placeholders back to real values on the device. This fork, maintained only for the hackathon, adds serialize() and deserialize() to that table for encrypted persistence on the device; the library itself does not encrypt, so the app that calls it must. Coding agents often open these pull requests, and your review may be the only check between their code and main.
 
 Find the problems in this change that matter, rank each one with the rubric below, and answer with the JSON object the response format requires.
 
@@ -1073,7 +1073,7 @@ How to treat the input
 - Some files were not sent to you (lockfiles, binaries, generated assets, data files, secret files, files over the size budget). The file list says which. Do not guess at their contents; if one matters, say so in the summary.
 
 How to review
-- Report real problems in the changed lines, or problems the change causes elsewhere that the diff shows. Do not report style that markdownlint, ESLint, or mypy already enforce.
+- Report real problems in the changed lines, or problems the change causes elsewhere that the diff shows. Do not report what CI's strict TypeScript type check already catches.
 - One finding per distinct problem. Use the file path exactly as the diff header shows it and the line number in the new version of the file (count from the hunk header), or null when no single line fits, such as a deleted file or a missing test.
 - Choose P1 only when the problem matches a P1 rule. When you are unsure between two severities, pick the lower one and say what would make it worse.
 - Keep each title under 100 characters, and keep why and fix to a few plain sentences. Put code in fix only when it is short.
@@ -1701,7 +1701,7 @@ RETRY_HINT = (
     "workflow to retry."
 )
 DRAFT_HINT = "The review starts when the PR is marked ready for review."
-MISSING_KEY_HINT = "Add the secret (see the README section on the review bot) and re-run the workflow."
+MISSING_KEY_HINT = "Add the `ANTHROPIC_REVIEW_KEY` repo secret and re-run the workflow."
 
 
 def render_status_comment(
@@ -2869,7 +2869,7 @@ class Reviewer:
         if not key:
             self.warn(
                 "the ANTHROPIC_REVIEW_KEY secret is not set. Add it as a repo secret, and as a Dependabot "
-                "secret for Dependabot PRs (see the README section on the review bot)."
+                "secret for Dependabot PRs."
             )
             reason = "the ANTHROPIC_REVIEW_KEY secret is not set"
             return self.not_reviewed(pr, reason, (), create=False, hint=MISSING_KEY_HINT)
