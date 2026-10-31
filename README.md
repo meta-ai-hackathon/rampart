@@ -277,3 +277,5 @@ bun run bench                              # score the shipped pipeline
 Released under [CC BY 4.0](./LICENSE) (Creative Commons Attribution 4.0 International).
 
 Training data: OpenPII 1.5M (CC BY 4.0).
+
+Pull requests here get a review from the Claude review bot.
