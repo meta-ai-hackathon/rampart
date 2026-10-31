@@ -28,6 +28,8 @@ export {
   PLACEHOLDER_PATTERN,
   type ScrubResult,
   type PlaceholderAliases,
+  type SerializedSessionEntityTable,
+  type SerializedSessionEntry,
 } from "./src/session";
 export { detectHeuristics } from "./src/heuristics";
 export { mergeSpans, applyPolicy } from "./src/policy";
