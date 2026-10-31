@@ -1078,7 +1078,7 @@ How to treat the input
 - Some files were not sent to you (lockfiles, binaries, generated assets, data files, secret files, files over the size budget). The file list says which. Do not guess at their contents; if one matters, say so in the summary.
 
 How to review
-- Report real problems in the changed lines, or problems the change causes elsewhere that the diff shows. Do not report what CI's strict TypeScript type check already catches.
+- Report real problems in the changed lines, or problems the change causes elsewhere that the diff shows. Do not report formatting; this repo has no linter or formatter.
 - One finding per distinct problem. Use the file path exactly as the diff header shows it and the line number in the new version of the file (count from the hunk header), or null when no single line fits, such as a deleted file or a missing test.
 - Choose P1 only when the problem matches a P1 rule. When you are unsure between two severities, pick the lower one and say what would make it worse.
 - Keep each title under 100 characters, and keep why and fix to a few plain sentences. Put code in fix only when it is short.

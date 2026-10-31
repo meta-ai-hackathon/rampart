@@ -38,7 +38,7 @@ These are real bugs and risks that do not need to block the merge.
 
 ### P3, nit
 
-P3 is for naming, small cleanups and suggestions, so keep these few. This repo has no linter, so do not turn style preferences into findings.
+P3 is for naming, small cleanups and suggestions, so keep these few. This repo has no linter or formatter, so do not report formatting at all.
 
 ## What not to flag
 
