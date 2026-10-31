@@ -23,16 +23,16 @@ A P1 fails the `claude-review` check. Use P1 only when the change does one of th
 * It exposes a secret, such as a key or token that is committed, printed by a workflow, or put in a prompt. The release workflow uses `NPM_TOKEN` and `HF_TOKEN`, and the review workflow uses `ANTHROPIC_REVIEW_KEY`.
 * It weakens this reviewer. The review workflow holds the review key, so making `.github/workflows/claude-review.yml` check out, install or run anything from the PR head is a P1. So is moving it off `pull_request_target`, adding a skip beyond the fork check, or giving it more than `contents: read` and `pull-requests: write`. Weakening `scripts/claude_review.py` or this file counts too.
 * It weakens a check that guards the PII boundary. Loosening, skipping or removing a test that checks that PII is redacted, that the serialized table round trips, or that `deserialize()` rejects bad input (`__tests__/session-serialize.test.ts`) is a P1, and so is lowering the floors in `eval/run-public-eval.ts` or taking `eval:public:strict` or the tests out of `verify:public` or CI. That is how a leak ships without anyone noticing.
-* It would break `main`, meaning it fails `bun run verify:public` in CI, which builds the package, runs the tests and the strict type check, and runs `eval:public:strict` and the Hugging Face export check.
+* It would break `main`, meaning it fails CI, which runs `bun run verify:public` and then `npm pack --dry-run`. `verify:public` builds the package, runs the tests and the strict type check, and runs `eval:public:strict` and the Hugging Face export check.
 
 ### P2, should fix soon
 
 These are real bugs and risks that do not need to block the merge.
 
-* Library code makes a new network call at runtime. Today the only network traffic Rampart starts is transformers.js downloading the model weights from Hugging Face, and apps can point it at a local copy instead. That download never carries user text. A new call that carries no PII is still a P2, since apps choose this library because nothing leaves the device, and one that carries PII is a P1.
+* Library code makes a new network call at runtime. Today the only network traffic Rampart starts is transformers.js fetching what it needs to run the model, such as the model files from Hugging Face, and apps can point it at local copies instead. That traffic never carries user text. A new call that carries no PII is still a P2, since apps choose this library because nothing leaves the device, and one that carries PII is a P1.
 * Library code adds telemetry, analytics or console output. Anything that records inputs, outputs, spans or table contents is a P1, so this covers the rest, such as timings and counts.
 * A test is loosened so it passes, for example an expected value changed to match new output with no reason given, a case removed, a test skipped, or a tolerance widened. When the test guards the PII boundary, the P1 rule above applies instead.
-* A detector change in `src/heuristics.ts`, `src/validators.ts` or `src/ner/` could stop catching a form of PII it caught before, and no test shows that it still does.
+* A change to the detectors in `src/heuristics.ts`, `src/validators.ts` or `src/ner/`, or to the premask in `src/premask.ts` that hides structured PII from the classifier, could stop catching a form of PII that was caught before, and no test shows it is still caught.
 * `PiiLabel` in `src/types.ts` changes without the same change to `PII_LABELS` in `src/session.ts`, so `deserialize()` would reject tables that hold the new label.
 * New logic has no test, an edge case gives a wrong result, or a new dependency has no pinned version or stated reason.
 * Docs now say the wrong thing, such as README numbers that no longer match the code, or a new doc comment on serialized data that leaves out how to handle it.
