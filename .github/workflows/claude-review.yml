@@ -1,0 +1,95 @@
+name: Claude Review
+
+# Reviews every push to a pull request with Claude Opus 5.5 and keeps one
+# sticky comment per PR current (scripts/claude_review.py).
+#
+# pull_request_target, not pull_request: GitHub then runs this workflow file
+# and the script from the base branch, so a PR cannot edit the job that
+# judges it. That is safe only because the job never checks out, installs,
+# or runs anything from the PR head; it reads the PR through the GitHub API.
+# Keep it that way, because this job holds the ANTHROPIC_REVIEW_KEY secret.
+#
+# Every same-repo PR event runs the job, labels, edits and drafts included,
+# because a skipped job leaves a passing check on the head commit that would
+# hide an earlier failure. When the sticky comment already holds a finished
+# review of the head commit against the PR's current base branch by this
+# same reviewer, the script re-checks that stored verdict against the labels
+# instead of calling the model again. A retarget gets a fresh review.
+#
+# The check fails only for a P1, unless the claude-review-override label was
+# last added by a person's account other than the PR's author's, directly
+# and not by a bot or an app, on a PR a person opened. The script
+# reads who added it from the PR's issue events, which the pull-requests
+# permission below covers. When it cannot read them, the label does not
+# count on that run. Other errors the script handles pass with a warning
+# and a NOT reviewed comment. A manual run never fails, since its check
+# lands on the default branch, not the PR.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled, edited]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request to review (open or merged)
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  claude-review:
+    name: claude-review
+    # Fork PRs are skipped so outside contributors cannot spend the review
+    # budget. GitHub counts that skipped check as passing, so a person has to
+    # review fork PRs. Nothing else may be skipped here (see above).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # One run per PR at a time. Only a new push cancels the run in progress;
+    # label, edit and reopen runs wait for it and then re-check its verdict.
+    # Manual runs get their own group, so they never cancel a PR's review.
+    concurrency:
+      group: >-
+        claude-review-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', inputs.pr_number) || github.event.pull_request.number }}
+      cancel-in-progress: ${{ github.event.action == 'synchronize' }}
+    steps:
+      - name: Check out the base branch, never the PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Find the reviewer on the base commit
+        id: reviewer
+        run: |
+          if [ -f scripts/claude_review.py ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::scripts/claude_review.py is not on the base branch, so there is nothing to run."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.reviewer.outputs.present == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install the review dependencies
+        if: steps.reviewer.outputs.present == 'true'
+        run: python3 -m pip install -r requirements-review.txt
+
+      - name: Review the pull request
+        if: steps.reviewer.outputs.present == 'true'
+        env:
+          ANTHROPIC_REVIEW_KEY: ${{ secrets.ANTHROPIC_REVIEW_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          REVIEWER_SHA="$(git rev-parse HEAD)" \
+            python3 scripts/claude_review.py --repo "$GITHUB_REPOSITORY" --pr "$PR_NUMBER"
