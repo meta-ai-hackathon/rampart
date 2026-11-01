@@ -206,6 +206,13 @@ async function buildNer(options: NerLoadOptions): Promise<NerDetector> {
 export async function createGuard(options: GuardOptions = {}): Promise<ChatGuard> {
   const { aliases = DEFAULT_ALIASES, keepLabels, noPrefilter, session, ner, heuristicsOnly, ...nerLoad } = options;
 
+  // Fail fast on a malformed session before paying for the NER model load;
+  // ChatGuard's constructor is still the single restore point and
+  // re-validates, so the second deserialize is idempotent.
+  if (session !== undefined) {
+    SessionEntityTable.deserialize(session, aliases, resolveKeepLabels(keepLabels));
+  }
+
   let detector = ner;
   if (detector === undefined && heuristicsOnly !== true) {
     detector = await buildNer(nerLoad);

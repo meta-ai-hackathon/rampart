@@ -83,8 +83,6 @@ export interface SerializedSessionEntry {
  *
  * Warning: **This contains raw PII.** The substitution map is the one thing
  * Rampart exists to keep on-device: whoever holds it can undo every
- *  * Warning: **This contains raw PII.** The substitution map is the one thing
- * Rampart exists to keep on-device: whoever holds it can undo every
  * placeholder. If it is persisted at all it MUST first be encrypted with
  * AES-256-GCM (not another scheme), using a fresh IV on every write and a
  * device-only, non-extractable key (for example a WebCrypto key created
