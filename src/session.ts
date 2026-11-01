@@ -64,7 +64,6 @@ export class SessionEntityTable {
     const token = `[${name}_${next}]`;
     this.forward.set(key, token);
     this.reverse.set(token, value);
-    console.log(JSON.stringify([...this.reverse]));
     return token;
   }
 
