@@ -12,13 +12,13 @@ It is not the upstream `nationaldesignstudio/rampart` repo.
 - **Never propose or open an upstream PR for `serialize()` / `deserialize()`.**
   The serialized form exports the raw token-to-PII map; upstream would
   predictably reject it for misuse potential. This stays fork-only.
-- Serialized session data **contains raw PII**. It must never be logged,
-  committed, pasted into issues/PRs, or sent anywhere. Callers (e.g. `meta-hack`)
-  must AES-256-GCM-encrypt it on-device before any persistence (e.g. IndexedDB).
-  Rampart deliberately does not encrypt.
-- Error paths must never interpolate serialized payload contents into messages.
-- `deserialize` must stay fail-closed: validate shape, `version`, labels, and
-  token format; reject duplicates; never move counters backwards.
+- Serialized session data is raw PII, and everything around persisting it —
+  what the caller (e.g. `meta-hack`) must do before writing it anywhere, what
+  may appear in an error message, and exactly what `deserialize` must reject
+  and accept — is governed by [`.github/claude-review/rules.md`](.github/claude-review/rules.md),
+  whose P1 list is the authoritative statement of these requirements. This
+  file's other mentions of them (e.g. the fork-only bullet above) are context
+  only, and rules.md wins whenever they disagree.
 - `.github/workflows/release.yml` is inert in this fork by design
   (`if: github.repository == 'nationaldesignstudio/rampart'`). Do not
   "fix" that guard without an explicit decision to publish from the fork.
