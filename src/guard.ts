@@ -56,9 +56,11 @@ export interface GuardOptions {
    *
    * Warning: A serialized table contains raw PII — it is the substitution map
    * Rampart exists to keep on-device. Only ever pass data that was
-   * decrypted from on-device storage; never fetch it from, or send it to,
-   * a server, and never log it. Restore with the same `aliases` /
-   * `keepLabels` the original guard used.
+   * decrypted from on-device storage using the encryption the
+   * {@link SerializedSessionEntityTable} warning requires (AES-256-GCM,
+   * fresh IV per write, device-only non-extractable key); never fetch it
+   * from, or send it to, a server, and never log it. Restore with the
+   * same `aliases` / `keepLabels` the original guard used.
    */
   readonly session?: string | SerializedSessionEntityTable;
   /**
@@ -135,9 +137,11 @@ export class ChatGuard {
 
   /**
    * Export the session entity table (see {@link SessionEntityTable.serialize}).
-   * Warning: The result contains raw PII: encrypt it (e.g. AES-256-GCM,
-   * device-only key) before persisting, keep it on the device, and never
-   * send or log it. Restore by passing it as `session` to {@link createGuard}.
+   * Warning: The result contains raw PII; persist it only in the encrypted
+   * form the {@link SerializedSessionEntityTable} warning requires
+   * (AES-256-GCM with a fresh IV per write, device-only non-extractable
+   * key), keep it on the device, and never send or log it. Restore by
+   * passing it as `session` to {@link createGuard}
    */
   serialize(): string {
     return this.table.serialize();
@@ -145,7 +149,8 @@ export class ChatGuard {
 
   /**
    * Object form of {@link serialize}. Same handling rules apply: it
-   * contains raw PII and must be encrypted before it is stored anywhere.
+   * contains raw PII and must be encrypted (AES-256-GCM, fresh IV per
+   * write, device-only non-extractable key) before it is stored anywhere.
    */
   serializeObject(): SerializedSessionEntityTable {
     return this.table.serializeObject();

@@ -88,12 +88,11 @@ describe("SessionEntityTable serialize/deserialize", () => {
   it("error messages never interpolate the payload", () => {
     const secret = "maria.garcia@example.com";
     const payload = JSON.stringify({ version: 1, entries: [{ label: "EMAIL", value: secret, token: "bad" }] });
-    try {
-      SessionEntityTable.deserialize(payload);
-      expect.unreachable();
-    } catch (e) {
-      expect((e as Error).message).not.toContain(secret);
-    }
+    let err; // captured outside the assertion flow so expect.unreachable cannot
+    const threw = (() => { try { SessionEntityTable.deserialize(payload); return false; } catch (e) { err = e; return true; } })();
+    expect(threw, "deserialize() should reject the malformed payload").toBe(true);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).not.toContain(secret);
   });
 });
 

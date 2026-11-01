@@ -13,10 +13,14 @@
  * The one deliberate exception is {@link SessionEntityTable.serialize} /
  * {@link SessionEntityTable.deserialize}, which exist so the table can survive
  * a page reload or app restart. The serialized form contains raw PII — it is
- * exactly as sensitive as the unredacted conversation. Callers MUST encrypt it
- * before persisting (e.g. AES-256-GCM with a device-only key), keep it on the
- * device, and never send or log it. Rampart intentionally does not encrypt:
- * key management belongs to the host app.
+ * exactly as sensitive as the unredacted conversation. Callers MUST
+ * encrypt it before persisting with AES-256-GCM (not another scheme),
+ * using a fresh IV on every write and a device-only, non-extractable
+ * key (for example a WebCrypto key created with `extractable: false`
+ * and stored in IndexedDB; never keep the key bytes where a script can
+ * read them, such as localStorage). Keep it on the device and never
+ * send, sync, or log it. Rampart intentionally does not encrypt: key
+ * management belongs to the host app.
  */
 
 import { applyPolicy } from "./policy";
@@ -79,11 +83,16 @@ export interface SerializedSessionEntry {
  *
  * Warning: **This contains raw PII.** The substitution map is the one thing
  * Rampart exists to keep on-device: whoever holds it can undo every
- * placeholder. If it is persisted at all it MUST be encrypted first
- * (e.g. AES-256-GCM with a device-only key) and kept on the device —
- * never sent to a server, synced, or logged. Rampart deliberately does
- * not encrypt: key management belongs to the host app, which owns the
- * platform key store.
+ *  * Warning: **This contains raw PII.** The substitution map is the one thing
+ * Rampart exists to keep on-device: whoever holds it can undo every
+ * placeholder. If it is persisted at all it MUST first be encrypted with
+ * AES-256-GCM (not another scheme), using a fresh IV on every write and a
+ * device-only, non-extractable key (for example a WebCrypto key created
+ * with `extractable: false` and stored in IndexedDB; never keep the key
+ * bytes anywhere a script can read them, such as localStorage, and never
+ * send, sync, or log the data). Rampart deliberately does not encrypt:
+ * key management belongs to the host app, which owns the platform key
+ * store.
  *
  * Aliases and keep-labels are configuration, not table state, and are
  * deliberately not stored here; supply the same configuration on restore.
@@ -202,8 +211,10 @@ export class SessionEntityTable {
 
   /**
    * Export the table as a JSON string, ready to encrypt and persist on the
-   * device. Warning: The string contains raw PII — encrypt it before storing
-   * it and never send or log it. See {@link SerializedSessionEntityTable}.
+   * device. Warning: the string contains raw PII; persist it only in the
+   * encrypted form the {@link SerializedSessionEntityTable} warning
+   * requires (AES-256-GCM, fresh IV per write, device-only
+   * non-extractable key), and never send or log it.
    */
   serialize(): string {
     return JSON.stringify(this.serializeObject());
@@ -269,7 +280,10 @@ export class SessionEntityTable {
       const parts = TOKEN_PARTS.exec(token);
       if (parts !== null) {
         const ordinal = Number(parts[2]);
-        if (ordinal >= 1 && ordinal > (counters.get(parts[1]) ?? 0)) {
+        if (!Number.isSafeInteger(ordinal) || ordinal < 1) {
+          throw invalid("entry token ordinal must be a positive safe integer");
+        }
+        if (ordinal > (counters.get(parts[1]) ?? 0)) {
           counters.set(parts[1], ordinal);
         }
       }
@@ -282,7 +296,7 @@ export class SessionEntityTable {
         if (
           !/^[A-Z][A-Z_]*$/.test(name) ||
           typeof ordinal !== "number" ||
-          !Number.isInteger(ordinal) ||
+          !Number.isSafeInteger(ordinal) ||
           ordinal < 0
         ) {
           throw invalid("counter must be a non-negative integer");
