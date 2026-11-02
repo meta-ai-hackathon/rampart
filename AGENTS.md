@@ -19,9 +19,23 @@ It is not the upstream `nationaldesignstudio/rampart` repo.
   whose P1 list is the authoritative statement of these requirements. This
   file's other mentions of them (e.g. the fork-only bullet above) are context
   only, and rules.md wins whenever they disagree.
-- `.github/workflows/release.yml` is inert in this fork by design
-  (`if: github.repository == 'nationaldesignstudio/rampart'`). Do not
-  "fix" that guard without an explicit decision to publish from the fork.
+- Fork changes must pay for themselves. Every line we diverge from
+  upstream is ongoing maintenance (reviewing it, carrying it as a patch,
+  resolving conflicts on every upstream sync), so only add a fork-only
+  change whose value is considerable, and otherwise leave upstream files
+  byte-identical.
+- The `github.repository == 'nationaldesignstudio/rampart'` guards in
+  `.github/workflows/release.yml` must always be present: every job that
+  can publish the fork to npm or Hugging Face must carry the guard,
+  including jobs that arrive in an upstream sync without one, and the
+  P1 list in `.github/claude-review/rules.md` treats removing the guards
+  from upstream's jobs as publishing the fork under the upstream names.
+  Do not publish from the fork without an explicit recorded decision to
+  publish. On upstream syncs, keep every other line of the file verbatim
+  from upstream and do not "fix", extend, or otherwise touch it for
+  safety (see the fork-burden bullet); adding or restoring this guard is
+  the one allowed exception to "verbatim", needed whenever a sync drops,
+  changes, or omits it on a job.
 - Do not casually rename the package (`@nationaldesignstudio/rampart`) or
   `RAMPART_MODEL_ID` in `src/ner/classifier.ts` — the latter is the runtime
   Hugging Face model id and renaming it breaks model loading.
