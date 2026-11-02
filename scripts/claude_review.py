@@ -655,14 +655,15 @@ class _Detector:
 # commas, spaces, the + of a string concatenation and a closing backslash.
 # The two headers of an encrypted PEM key and blank lines count too. Each
 # piece is matched once, where the last one ended, and its runs are
-# possessive, so the walk takes linear time.
-_KEY_HEADER = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
-_KEY_FOOTER = re.compile(r"-----END [A-Z ]*PRIVATE KEY-----")
+# possessive, so the walk takes linear time. A PGP private key block's
+# markers end in BLOCK.
+_KEY_HEADER = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----")
+_KEY_FOOTER = re.compile(r"-----END [A-Z ]*PRIVATE KEY(?: BLOCK)?-----")
 _KEY_RUN = re.compile(r"(?:[A-Za-z0-9+/=]|\\++/)++")
 # How far past a header a footer still counts as that key's footer (main's bound).
 _KEY_FOOTER_WINDOW = 8000 + 40
 _KEY_PIECE = re.compile(
-    r"(?P<footer>-?-----END [A-Z ]*PRIVATE KEY-----)"
+    r"(?P<footer>-?-----END [A-Z ]*PRIVATE KEY(?: BLOCK)?-----)"
     r"|(?P<line_break>\r\n?+|\n|\\++[nr])"
     r"|(?P<pem_header>Proc-Type: ?4,ENCRYPTED|DEK-Info: ?[A-Z0-9-]++,[0-9A-Fa-f]++)"
     r"""|(?P<gap>(?:[ \t"'`,]|\\++["'`t]|\\++(?=[\r\n]|\Z))++)"""
@@ -681,11 +682,15 @@ _KEY_LINE_START = re.compile(
 # A key's base64 comes in lines of 64 characters (70 or 76 in some formats),
 # so a run of 16 or more is a line of a key. A shorter run is one only as the
 # key's last line, right before the footer. A run of fewer + signs than that
-# is the + of a concatenation.
+# is the + of a concatenation. A PGP private key block can hold one more
+# short run there, its checksum: = and four base64 characters (a diff's +
+# or a comment's // before it is read with the run, as at any line start
+# that base64 follows).
 _KEY_LINE_MIN = 16
+_PGP_CHECKSUM = re.compile(r"[+/]*+=[A-Za-z0-9+/]{4}")
 
 
-def _key_end(text: str, pos: int) -> int:
+def _key_end(text: str, pos: int, pgp: bool = False) -> int:
     """Where the redaction of a key whose header ends at pos stops: at the
     end of its footer when every line before the footer is key material, and
     otherwise at the end of the last whole line of key material right after
@@ -693,12 +698,14 @@ def _key_end(text: str, pos: int) -> int:
     follows within the bound, the first line that is not key material, such
     as a line of code, and everything after it reach the model; when one
     does follow, private_key_spans also redacts the key material and the
-    footer after that line (see there)."""
+    footer after that line (see there). pgp says the header is a PGP private
+    key block's, whose checksum may follow its short last line."""
     end = pos  # the header and every whole line of key material after it
     pending = False  # a short run ended a line, so only the footer may follow
     line_end: int | None = None  # the end of the current line's last full run
     line_short = False  # a short run came on the current line
     line_start = False  # nothing but a line's start yet, where comment markers may stand
+    checksum = pgp  # a PGP block's checksum may still come after a short run
     while True:
         if line_start and (lead := _KEY_LINE_START.match(text, pos)):
             pos = lead.end()
@@ -716,7 +723,9 @@ def _key_end(text: str, pos: int) -> int:
             pending, line_end, line_short, line_start = pending or line_short, None, False, True
         elif kind == "pem_header" or (kind == "base64" and (value.strip("+") or len(value) >= _KEY_LINE_MIN)):
             if pending or line_short:
-                return end  # a short run that was not the key's last line
+                if not (checksum and _PGP_CHECKSUM.fullmatch(value.replace("\\", ""))):
+                    return end  # a short run that was not the key's last line
+                checksum = False
             if kind == "base64" and len(value) < _KEY_LINE_MIN:
                 line_short = True
             else:
@@ -737,7 +746,7 @@ def private_key_spans(text: str) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
     header = _KEY_HEADER.search(text)
     while header is not None:
-        end = _key_end(text, header.end())
+        end = _key_end(text, header.end(), pgp=header.group().endswith(" BLOCK-----"))
         spans.append((header.start(), end))
         footer = _KEY_FOOTER.search(text, header.end(), header.end() + _KEY_FOOTER_WINDOW)
         if footer is not None and _KEY_HEADER.search(text, header.end(), footer.start()) is not None:
