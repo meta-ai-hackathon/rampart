@@ -4,6 +4,21 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # This fork intentionally diverges from its upstream parent, and each
+    # pinned-action bump in the shared workflows (ci.yml, release.yml) is
+    # another fork-only commit that makes a future upstream sync conflict.
+    # Dependabot ignores are per dependency name, not per workflow file,
+    # and this ecosystem has no path filter, so the whole ecosystem stays
+    # at limit 0: fork-only workflows (claude-review.yml) are frozen too,
+    # but repo-level Dependabot security updates are enabled there, and
+    # they follow their own limits, so vulnerable action pins still get
+    # PRs. Actions in claude-review.yml are additionally SHA-pinned on
+    # purpose, so any change there is a deliberate commit anyway. That
+    # enabling is a repo-owner setting, not version controlled: verified
+    # enabled on 2026-11-02, and if it is ever disabled, either re-enable
+    # security updates or raise this limit first, or the fork-only
+    # workflows get no action updates at all.
+    open-pull-requests-limit: 0
   - package-ecosystem: "pip"
     # requirements-review.txt pins the Claude review bot's dependencies and
     # lives at the repo root.
