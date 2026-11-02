@@ -98,6 +98,7 @@ describe("SessionEntityTable serialize/deserialize", () => {
     // Capture the error outside the assertion flow: if expect.unreachable() sat
     // inside the try, a wrongly-accepting deserialize() would raise the
     // assertion inside the catch and the secret check would never run.
+    let err: unknown;
     const threw = (() => { try { SessionEntityTable.deserialize(payload); return false; } catch (e) { err = e; return true; } })();
     expect(threw, "deserialize() should reject the malformed payload").toBe(true);
     expect(err).toBeInstanceOf(Error);
