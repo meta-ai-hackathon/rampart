@@ -24,6 +24,7 @@ import { detectHeuristics } from "./heuristics";
 import { loadNerClassifier, detectNer, RAMPART_MODEL_ID, type NerOptions } from "./ner/classifier";
 import { createWorkerClassifier, type WorkerMessagePort } from "./ner/worker";
 import { premask, projectMaskedSpan } from "./premask";
+import { dropAllowListed } from "./policy";
 import { createRevealTransform } from "./streaming";
 import {
   SessionEntityTable,
@@ -48,6 +49,15 @@ export interface GuardOptions {
   readonly aliases?: PlaceholderAliases;
   /** Labels to preserve; defaults to `{CITY, STATE, ZIP_CODE}`. */
   readonly keepLabels?: readonly PiiLabel[];
+  /**
+   * Domain terms the app asserts are never PII (same idea as Presidio's
+   * `allow_list` and AWS Macie's allow lists): detected spans whose text
+   * equals an entry case-insensitively are dropped from detection and left
+   * verbatim — benefits program names and similar known false positives.
+   * Matching is whole-span, never substring, so the surrounding bytes of a
+   * larger finding stay protected; an omitted or empty list changes nothing.
+   */
+  readonly allowList?: readonly string[];
   /**
    * Restore the session entity table from
    * {@link SessionEntityTable.deserialize} output (`serialize()` /
@@ -87,14 +97,16 @@ export interface GuardOptions {
   readonly minScore?: number;
 }
 
-type ChatGuardConfig = Pick<GuardOptions, "ner" | "aliases" | "keepLabels" | "noPrefilter" | "session">;
+type ChatGuardConfig = Pick<GuardOptions, "ner" | "aliases" | "allowList" | "keepLabels" | "noPrefilter" | "session">;
 
 export class ChatGuard {
   private readonly table: SessionEntityTable;
   private readonly ner?: NerDetector;
   private readonly noPrefilter: boolean;
+  private readonly allowList: readonly string[];
 
   constructor(config: ChatGuardConfig = {}) {
+    this.allowList = config.allowList ?? [];
     const keepLabels = resolveKeepLabels(config.keepLabels);
     this.table =
       config.session !== undefined
@@ -105,6 +117,10 @@ export class ChatGuard {
   }
 
   private async detect(text: string): Promise<Span[]> {
+    return dropAllowListed(await this.detectSpans(text), this.allowList);
+  }
+
+  private async detectSpans(text: string): Promise<Span[]> {
     const heuristic = detectHeuristics(text);
     if (this.ner === undefined) return heuristic;
     if (this.noPrefilter) {
@@ -204,7 +220,7 @@ async function buildNer(options: NerLoadOptions): Promise<NerDetector> {
  * true` to skip NER, or `ner` to inject a custom detector.
  */
 export async function createGuard(options: GuardOptions = {}): Promise<ChatGuard> {
-  const { aliases = DEFAULT_ALIASES, keepLabels, noPrefilter, session, ner, heuristicsOnly, ...nerLoad } = options;
+  const { aliases = DEFAULT_ALIASES, allowList, keepLabels, noPrefilter, session, ner, heuristicsOnly, ...nerLoad } = options;
 
   // Fail fast on a malformed session before paying for the NER model load;
   // ChatGuard's constructor is still the single restore point and
@@ -218,5 +234,5 @@ export async function createGuard(options: GuardOptions = {}): Promise<ChatGuard
     detector = await buildNer(nerLoad);
   }
 
-  return new ChatGuard({ ner: detector, aliases, keepLabels, noPrefilter, session });
+  return new ChatGuard({ ner: detector, aliases, allowList, keepLabels, noPrefilter, session });
 }

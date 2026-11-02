@@ -32,7 +32,7 @@ export {
   type SerializedSessionEntry,
 } from "./src/session";
 export { detectHeuristics } from "./src/heuristics";
-export { mergeSpans, applyPolicy } from "./src/policy";
+export { mergeSpans, applyPolicy, dropAllowListed } from "./src/policy";
 export { premask, projectMaskedSpan, sentinelFor, type PremaskResult } from "./src/premask";
 export { KEEP_LABELS, resolveKeepLabels, shouldRedact, type PiiLabel, type Span } from "./src/types";
 export {
