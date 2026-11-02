@@ -62,3 +62,27 @@ export function applyPolicy(spans: readonly Span[], keepLabels: ReadonlySet<PiiL
     .filter((s) => shouldRedact(s.label, keepLabels))
     .sort((a, b) => b.start - a.start);
 }
+
+/**
+ * Drop spans covered by a caller allow-list — see Presidio's `allow_list` and
+ * its equivalents — i.e.
+ * domain terms the app asserts are never PII (benefits program names and
+ * similar false positives). Matching is whole-span: a span is suppressed only
+ * when its text equals a list entry case-insensitively (entries are trimmed).
+ * Since the list itself comes from the calling app, this can never silently
+ * weaken the default-deny policy — an omitted or empty list changes nothing.
+ *
+ * Match whole spans, never substrings: an entry matched inside a larger span
+ * would let the surrounding bytes (possibly real PII) through, against
+ * Presidio's "whole finding is dropped" semantics and AWS Macie's
+ * "text that exactly matches an entry" definition.
+ */
+export function dropAllowListed(spans: readonly Span[], allowList: readonly string[] = []): Span[] {
+  const allowed = new Set(
+    allowList
+      .map((term) => term.trim().toLowerCase())
+      .filter((term) => term.length > 0),
+  );
+  if (allowed.size === 0) return [...spans];
+  return spans.filter((span) => !allowed.has(span.text.toLowerCase()));
+}

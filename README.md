@@ -185,6 +185,7 @@ Scrub model output before logging: `await guard.protectReply(reply)`.
 | `worker` | — | Worker script URL — run NER off the main thread |
 | `heuristicsOnly` | `false` | Skip the classifier; structured PII only |
 | `keepLabels` | city, state, ZIP | Widen or narrow the default-deny keep-set |
+| `allowList` | `[]` | Domain terms never treated as PII (Presidio-style allow list): detected spans whose text equals an entry, case-insensitively, are left verbatim. Whole-span matching only |
 | `aliases` | `{}` | Display names for tokens, e.g. `{ GIVEN_NAME: "NAME" }` |
 | `ner` | — | Inject a custom detector; skips `model` |
 | `minScore` | `0.4` | Drop model spans below this confidence |
