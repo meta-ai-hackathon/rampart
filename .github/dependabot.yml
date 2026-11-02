@@ -4,6 +4,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # This fork intentionally diverges from its upstream parent, and each
+    # pinned-action bump is another commit that makes future upstream
+    # syncs conflict, so Dependabot opens no PRs for this ecosystem.
+    open-pull-requests-limit: 0
   - package-ecosystem: "pip"
     # requirements-review.txt pins the Claude review bot's dependencies and
     # lives at the repo root.
