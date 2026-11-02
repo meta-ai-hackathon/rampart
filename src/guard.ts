@@ -59,6 +59,13 @@ export interface GuardOptions {
    */
   readonly allowList?: readonly string[];
   /**
+   * Labels the allow-list never exempts (default: none). A short entry such as
+   * "CHIP" also equals a person's given name; pass the person-name labels
+   * (GIVEN_NAME, SURNAME) so a span carrying one of them is always redacted,
+   * entry or not. Omitting it keeps raw text-matching behavior.
+   */
+  readonly allowListSkipLabels?: readonly PiiLabel[];
+  /**
    * Restore the session entity table from
    * {@link SessionEntityTable.deserialize} output (`serialize()` /
    * `serializeObject()`) so placeholder identity survives a page reload or
@@ -97,16 +104,21 @@ export interface GuardOptions {
   readonly minScore?: number;
 }
 
-type ChatGuardConfig = Pick<GuardOptions, "ner" | "aliases" | "allowList" | "keepLabels" | "noPrefilter" | "session">;
+type ChatGuardConfig = Pick<
+  GuardOptions,
+  "ner" | "aliases" | "allowList" | "allowListSkipLabels" | "keepLabels" | "noPrefilter" | "session"
+>;
 
 export class ChatGuard {
   private readonly table: SessionEntityTable;
   private readonly ner?: NerDetector;
   private readonly noPrefilter: boolean;
   private readonly allowList: readonly string[];
+  private readonly allowListSkipLabels: ReadonlySet<PiiLabel>;
 
   constructor(config: ChatGuardConfig = {}) {
     this.allowList = config.allowList ?? [];
+    this.allowListSkipLabels = new Set(config.allowListSkipLabels ?? []);
     const keepLabels = resolveKeepLabels(config.keepLabels);
     this.table =
       config.session !== undefined
@@ -117,7 +129,7 @@ export class ChatGuard {
   }
 
   private async detect(text: string): Promise<Span[]> {
-    return dropAllowListed(await this.detectSpans(text), this.allowList);
+    return dropAllowListed(await this.detectSpans(text), this.allowList, this.allowListSkipLabels);
   }
 
   private async detectSpans(text: string): Promise<Span[]> {
@@ -220,7 +232,17 @@ async function buildNer(options: NerLoadOptions): Promise<NerDetector> {
  * true` to skip NER, or `ner` to inject a custom detector.
  */
 export async function createGuard(options: GuardOptions = {}): Promise<ChatGuard> {
-  const { aliases = DEFAULT_ALIASES, allowList, keepLabels, noPrefilter, session, ner, heuristicsOnly, ...nerLoad } = options;
+  const {
+    aliases = DEFAULT_ALIASES,
+    allowList,
+    allowListSkipLabels,
+    keepLabels,
+    noPrefilter,
+    session,
+    ner,
+    heuristicsOnly,
+    ...nerLoad
+  } = options;
 
   // Fail fast on a malformed session before paying for the NER model load;
   // ChatGuard's constructor is still the single restore point and
@@ -234,5 +256,13 @@ export async function createGuard(options: GuardOptions = {}): Promise<ChatGuard
     detector = await buildNer(nerLoad);
   }
 
-  return new ChatGuard({ ner: detector, aliases, allowList, keepLabels, noPrefilter, session });
+  return new ChatGuard({
+    ner: detector,
+    aliases,
+    allowList,
+    allowListSkipLabels,
+    keepLabels,
+    noPrefilter,
+    session,
+  });
 }
