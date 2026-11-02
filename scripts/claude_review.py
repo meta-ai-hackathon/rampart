@@ -695,7 +695,9 @@ _KEY_LINE_START = re.compile(
 # is the + of a concatenation. A PGP private key block can hold one more
 # short run there, its checksum: = and four base64 characters (a diff's +
 # or a comment's // before it is read with the run, as at any line start
-# that base64 follows).
+# that base64 follows). However long that makes it, the checksum counts as
+# a short run, so it never ends a whole line of key material, and with no
+# footer right after it neither it nor the short line before it is redacted.
 _KEY_LINE_MIN = 16
 _PGP_CHECKSUM = re.compile(r"[+/]*+=[A-Za-z0-9+/]{4}")
 
@@ -732,11 +734,12 @@ def _key_end(text: str, pos: int, pgp: bool = False) -> int:
             end = end if line_end is None else line_end
             pending, line_end, line_short, line_start = pending or line_short, None, False, True
         elif kind == "pem_header" or (kind == "base64" and (value.strip("+") or len(value) >= _KEY_LINE_MIN)):
+            short = kind == "base64" and len(value) < _KEY_LINE_MIN
             if pending or line_short:
                 if not (checksum and _PGP_CHECKSUM.fullmatch(value.replace("\\", ""))):
                     return end  # a short run that was not the key's last line
-                checksum = False
-            if kind == "base64" and len(value) < _KEY_LINE_MIN:
+                checksum, short = False, True  # the checksum, short however it is written
+            if short:
                 line_short = True
             else:
                 line_end = pos
