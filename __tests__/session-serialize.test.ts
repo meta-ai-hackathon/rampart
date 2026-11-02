@@ -95,7 +95,9 @@ describe("SessionEntityTable serialize/deserialize", () => {
   it("error messages never interpolate the payload", () => {
     const secret = "maria.garcia@example.com";
     const payload = JSON.stringify({ version: 1, entries: [{ label: "EMAIL", value: secret, token: "bad" }] });
-    let err; // captured outside the assertion flow so expect.unreachable cannot
+    // Capture the error outside the assertion flow: if expect.unreachable() sat
+    // inside the try, a wrongly-accepting deserialize() would raise the
+    // assertion inside the catch and the secret check would never run.
     const threw = (() => { try { SessionEntityTable.deserialize(payload); return false; } catch (e) { err = e; return true; } })();
     expect(threw, "deserialize() should reject the malformed payload").toBe(true);
     expect(err).toBeInstanceOf(Error);
