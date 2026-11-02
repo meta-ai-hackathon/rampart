@@ -639,6 +639,16 @@ def _real_email(candidate: str) -> bool:
     return not any(domain == known or domain.endswith("." + known) for known in EXAMPLE_EMAIL_DOMAINS)
 
 
+def _whole_jwt(candidate: str) -> bool:
+    """Whether a match of the JWT pattern is a whole JWT. The pattern's
+    other branch takes the rest of a run of base64url after an eyJ where no
+    JWT starts. Every later eyJ in that run would need the same dots and
+    segments after the run, with a shorter first segment, so none of them
+    starts one either, and skipping them keeps the scan linear however many
+    the run holds."""
+    return "." in candidate
+
+
 @dataclass(frozen=True)
 class _Detector:
     kind: str
@@ -765,15 +775,20 @@ def private_key_spans(text: str) -> list[tuple[int, int]]:
 
 # Private keys go first (private_key_spans), then these: tokens, then
 # personal data. High-precision patterns only, in this order, so that no
-# replacement text can match a later pattern. A token may start right after
-# a digit, the way one stuck to the end of an SSN or a card number does, so
-# it goes in the first pass and not only once that number's marker stands
-# before it. A letter or an underscore before it still keeps the tail of a
-# longer name out. The JWT pattern comes after the SSNs and card numbers
-# instead, where their marker gives it that boundary: a digit before eyJ
-# would make each eyJ in a long base64 run a new start that reads to the end
-# of the run, and the scan would grow with the square of the run.
+# replacement text can match a later pattern. A JWT goes first of all: its
+# segments are base64url, which can hold the shape of an SSN, a card number
+# or another token, and a match inside it would break the JWT's shape and
+# leave the rest of it visible. A token may start right after a digit, the
+# way one stuck to the end of an SSN or a card number does, so it goes in
+# the first pass and not only once that number's marker stands before it.
+# A letter or an underscore before it still keeps the tail of a longer name
+# out.
 DETECTORS: tuple[_Detector, ...] = (
+    _Detector(
+        "jwt",
+        re.compile(r"(?<![^\W\d])eyJ(?:[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]*+)"),
+        _whole_jwt,
+    ),
     _Detector(
         "api key",
         re.compile(
@@ -791,7 +806,6 @@ DETECTORS: tuple[_Detector, ...] = (
     _Detector("url credentials", re.compile(r"(?<=://)[^\s:/@\[\]]+:[^\s@/\[\]]+(?=@)")),
     _Detector("ssn", re.compile(r"(?<![\d-])\d{3}-\d{2}-\d{4}(?![\d-])")),
     _Detector("card number", re.compile(r"(?<![\d-])\d(?:[ -]?\d){12,18}(?![\d-])"), _luhn_ok),
-    _Detector("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")),
     _Detector(
         "phone number",
         re.compile(r"(?<![\w.+-])(?:\+?1[ .-]?)?(?:\(\d{3}\)|\d{3})[ .-]\d{3}[ .-]\d{4}(?![\w-])"),
