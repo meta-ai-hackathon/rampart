@@ -785,13 +785,15 @@ def private_key_spans(text: str) -> list[tuple[int, int]]:
 # way one stuck to the end of an SSN or a card number does, so it goes in
 # the first pass and not only once that number's marker stands before it.
 # A letter or an underscore before it still keeps the tail of a longer name
-# out.
+# out. The Google API key pattern takes a key at its fixed length, so a JWT
+# stuck right after one starts after the key's last character, which is
+# most often a letter, and the first JWT pattern refuses it. A second JWT
+# pattern takes it once the key's marker stands before it. That pattern
+# starts only at an eyJ right after a ], which begins a run, so it reads
+# each run once.
+_JWT_SEGMENTS = r"[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
 DETECTORS: tuple[_Detector, ...] = (
-    _Detector(
-        "jwt",
-        re.compile(r"(?<![^\W\d])eyJ(?:[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]*+)"),
-        _whole_jwt,
-    ),
+    _Detector("jwt", re.compile(r"(?<![^\W\d])eyJ(?:" + _JWT_SEGMENTS + r"|[A-Za-z0-9_-]*+)"), _whole_jwt),
     _Detector(
         "api key",
         re.compile(
@@ -806,6 +808,7 @@ DETECTORS: tuple[_Detector, ...] = (
             r"|xox[abposr]-[A-Za-z0-9-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}\b)"
         ),
     ),
+    _Detector("jwt", re.compile(r"(?<=\])eyJ" + _JWT_SEGMENTS)),
     _Detector("url credentials", re.compile(r"(?<=://)[^\s:/@\[\]]+:[^\s@/\[\]]+(?=@)")),
     _Detector("ssn", re.compile(r"(?<![\d-])\d{3}-\d{2}-\d{4}(?![\d-])")),
     _Detector("card number", re.compile(r"(?<![\d-])\d(?:[ -]?\d){12,18}(?![\d-])"), _luhn_ok),
