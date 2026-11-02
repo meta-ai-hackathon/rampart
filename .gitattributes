@@ -1,3 +1,10 @@
+# Sourcemap reproducibility: bun run build inlines the checkout's source
+# text into dist/index.js.map's sourcesContent, so the committed map is only
+# byte-reproducible from a checkout whose line endings match the build
+# checkout's. Pin LF for every text file so any clean checkout
+# (Windows included) smudges exactly what a Linux CI checkout gets.
+* text=auto eol=lf
+
 model/onnx/*.onnx filter=lfs diff=lfs merge=lfs -text
 # tokenizer.json (~310 KB) and vocab.txt (~94 KB) are regenerated whenever the
 # vocab is trimmed against a new training corpus, so they churn alongside the
