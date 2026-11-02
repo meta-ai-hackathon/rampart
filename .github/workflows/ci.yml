@@ -32,6 +32,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # verify:public runs the suite through bun test, whose semantics are
+      # not those of the canonical vitest runner; assert on the real suite
+      # as well so a vitest-only failure mode cannot hide behind bun test.
+      - name: Run the vitest test suite
+        run: bun run test
+
       - name: Verify public package
         run: bun run verify:public
 
