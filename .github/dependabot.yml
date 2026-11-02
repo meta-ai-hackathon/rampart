@@ -4,3 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+  - package-ecosystem: "pip"
+    # requirements-review.txt pins the Claude review bot's dependencies and
+    # lives at the repo root.
+    directory: "/"
+    schedule:
+      interval: "weekly"
