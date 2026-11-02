@@ -81,7 +81,16 @@ const ALL_LABELS: Record<PiiLabel, true> = {
   ZIP_CODE: true,
 };
 
-const PII_LABELS: ReadonlySet<string> = new Set(Object.keys(ALL_LABELS));
+/**
+ * Every member of PiiLabel, as a runtime list. Derived from ALL_LABELS,
+ * a Record<PiiLabel, true> literal with no cast, so this list cannot
+ * drift from the union in either direction: adding a member without a
+ * case above fails the type check, and removing one shrinks the record
+ * until it no longer satisfies its own type.
+ */
+export const PII_LABELS: readonly PiiLabel[] =
+  Object.keys(ALL_LABELS) as readonly PiiLabel[];
+const PII_LABEL_SET: ReadonlySet<string> = new Set(PII_LABELS);
 
 /**
  * One restored mapping: the raw value behind a placeholder.
@@ -284,7 +293,7 @@ export class SessionEntityTable {
         value?: unknown;
         token?: unknown;
       };
-      if (typeof label !== "string" || !PII_LABELS.has(label)) {
+      if (typeof label !== "string" || !PII_LABEL_SET.has(label)) {
         throw invalid("entry has an unknown label");
       }
       if (typeof value !== "string" || value.length === 0) {

@@ -1,46 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { createGuard, type NerDetector } from "../src/guard";
 import { dropAllowListed } from "../src/policy";
+import { PII_LABELS } from "../src/session";
 import type { PiiLabel, Span } from "../src/types";
 
 /**
- * Every member of PiiLabel, as a runtime list. The exhaustiveness check
- * below makes a forgotten member a type error here, so a new label stays
- * covered by the skip-label tests.
- */
-const PII_LABELS: readonly PiiLabel[] = [
-  "SSN",
-  "CREDIT_CARD",
-  "IP_ADDRESS",
-  "GIVEN_NAME",
-  "SURNAME",
-  "EMAIL",
-  "PHONE",
-  "URL",
-  "TAX_ID",
-  "BANK_ACCOUNT",
-  "ROUTING_NUMBER",
-  "GOVERNMENT_ID",
-  "PASSPORT",
-  "DRIVERS_LICENSE",
-  "BUILDING_NUMBER",
-  "STREET_NAME",
-  "SECONDARY_ADDRESS",
-  "CITY",
-  "STATE",
-  "ZIP_CODE",
-];
-const ALL_COVERED: Record<PiiLabel, true> = Object.fromEntries(
-  PII_LABELS.map((label) => [label, true] as const),
-) as Record<PiiLabel, true>;
-/**
- * Compile-time: PII_LABELS must cover every member of PiiLabel exactly
- * once, so the tests below stay exhaustive as the label set grows.
+ * The label list under test is PII_LABELS from session.ts, which is
+ * derived from ALL_LABELS there — a Record<PiiLabel, true> object
+ * literal with no cast. That literal is the compile-time check the
+ * tests below rely on: a PiiLabel member added without a case in
+ * session.ts fails the build, and this file cannot shrink the list
+ * behind the tests' coverage because they no longer own a copy.
  */
 describe("PII_LABELS", () => {
-  it("lists every PiiLabel member exactly once", () => {
+  it("has no duplicates", () => {
     expect(new Set(PII_LABELS).size).toBe(PII_LABELS.length);
-    expect([...PII_LABELS].sort()).toEqual(Object.keys(ALL_COVERED).sort());
   });
 });
 
@@ -183,10 +157,17 @@ describe("dropAllowListed skipLabels", () => {
 describe("createGuard allowListSkipLabels", () => {
   function nerFindingChip(): NerDetector {
     return async (text) => {
-      const at = text.indexOf("Chip");
-      return at < 0
-        ? []
-        : [{ start: at, end: at + 4, label: "GIVEN_NAME", score: 0.9, source: "ner", text: "Chip" }];
+      const finds: Awaited<ReturnType<NerDetector>> = [];
+      const person = text.indexOf("Chip");
+      if (person >= 0) {
+        finds.push({ start: person, end: person + 4, label: "GIVEN_NAME", score: 0.9, source: "ner", text: "Chip" });
+      }
+      // The literal program mention too, tagged as a non-name label.
+      const program = text.indexOf("CHIP");
+      if (program >= 0) {
+        finds.push({ start: program, end: program + 4, label: "TAX_ID", score: 0.9, source: "ner", text: "CHIP" });
+      }
+      return finds;
     };
   }
 
@@ -199,8 +180,10 @@ describe("createGuard allowListSkipLabels", () => {
     const { text } = await guard.protect("my son Chip wants CHIP");
     expect(text).toContain("[GIVEN_NAME_1]");
     expect(text).not.toContain("Chip");
-    // The entry still works for program mentions the model does NOT tag as
-    // a person name: that span carries another label here.
+    // The entry still exempts the program span the detector tags with
+    // another label (TAX_ID here): that non-excluded span passes through
+    // verbatim.
+    expect(text).toContain("wants CHIP");
     expect(guard.reveal(text)).toContain("Chip");
     expect(guard.serialize()).toContain("Chip");
   });
