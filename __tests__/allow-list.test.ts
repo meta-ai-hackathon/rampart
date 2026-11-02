@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { createGuard, type NerDetector } from "../src/guard";
 import { dropAllowListed } from "../src/policy";
-import type { Span } from "../src/types";
+import { PII_LABELS } from "../src/session";
+import type { PiiLabel, Span } from "../src/types";
+
+/**
+ * The label list under test is PII_LABELS from session.ts, which is
+ * derived from ALL_LABELS there — a Record<PiiLabel, true> object
+ * literal with no cast. That literal is the compile-time check the
+ * tests below rely on: a PiiLabel member added without a case in
+ * session.ts fails the build, and this file cannot shrink the list
+ * behind the tests' coverage because they no longer own a copy.
+ */
+describe("PII_LABELS", () => {
+  it("has no duplicates", () => {
+    expect(new Set(PII_LABELS).size).toBe(PII_LABELS.length);
+  });
+});
 
 describe("dropAllowListed", () => {
   function span(overrides: Partial<Span> & { start: number; end: number; text: string }): Span {
@@ -102,5 +117,81 @@ describe("createGuard allowList", () => {
     const guard = await createGuard({ ner });
     const { text } = await guard.protect("does Medicare cover this?");
     expect(text).toBe("does [GIVEN_NAME_1] cover this?");
+  });
+});
+
+describe("dropAllowListed skipLabels", () => {
+  function span(overrides: Partial<Span> & { start: number; end: number; text: string }): Span {
+    return { label: "GIVEN_NAME", score: 1, source: "ner", ...overrides };
+  }
+
+  it("keeps a person-name span whose text equals an entry when its label is excluded", () => {
+    // "my son Chip": Rampart finds "Chip" as GIVEN_NAME and the entry "CHIP"
+    // equals its text. Without the skip set the exemption would necessarily
+    // also pass the name through, so the caller excludes person-name labels.
+    const spans = [
+      span({ start: 7, end: 11, text: "Chip" }),
+      { label: "TAX_ID", score: 1, source: "ner", start: 15, end: 19, text: "CHIP" } as Span,
+    ];
+    const out = dropAllowListed(spans, ["CHIP"], new Set<PiiLabel>(["GIVEN_NAME", "SURNAME"]));
+    expect(out.map((s) => s.text)).toEqual(["Chip"]);
+  });
+
+  it("exempts every label text-match when no label is excluded (default unchanged)", () => {
+    const spans = [...PII_LABELS].map((label, i) =>
+      ({ label, score: 1, source: "ner", start: i * 4, end: i * 4 + 4, text: "CHIP" } as Span),
+    );
+    expect(dropAllowListed(spans, ["chip"])).toEqual([]);
+  });
+
+  it("keeps only the excluded labels' spans, across every label", () => {
+    const skips = new Set<PiiLabel>(["GIVEN_NAME", "SURNAME"]);
+    const spans = [...PII_LABELS].map((label, i) =>
+      ({ label, score: 1, source: "ner", start: i * 4, end: i * 4 + 4, text: "CHIP" } as Span),
+    );
+    const out = dropAllowListed(spans, ["CHIP"], skips);
+    expect(out.map((s) => s.label).sort()).toEqual(["GIVEN_NAME", "SURNAME"]);
+  });
+});
+
+describe("createGuard allowListSkipLabels", () => {
+  function nerFindingChip(): NerDetector {
+    return async (text) => {
+      const finds: Awaited<ReturnType<NerDetector>> = [];
+      const person = text.indexOf("Chip");
+      if (person >= 0) {
+        finds.push({ start: person, end: person + 4, label: "GIVEN_NAME", score: 0.9, source: "ner", text: "Chip" });
+      }
+      // The literal program mention too, tagged as a non-name label.
+      const program = text.indexOf("CHIP");
+      if (program >= 0) {
+        finds.push({ start: program, end: program + 4, label: "TAX_ID", score: 0.9, source: "ner", text: "CHIP" });
+      }
+      return finds;
+    };
+  }
+
+  it("redacts a person-name span that matches an allow-list entry when its label is excluded", async () => {
+    const guard = await createGuard({
+      ner: nerFindingChip(),
+      allowList: ["CHIP"],
+      allowListSkipLabels: ["GIVEN_NAME", "SURNAME"],
+    });
+    const { text } = await guard.protect("my son Chip wants CHIP");
+    expect(text).toContain("[GIVEN_NAME_1]");
+    expect(text).not.toContain("Chip");
+    // The entry still exempts the program span the detector tags with
+    // another label (TAX_ID here): that non-excluded span passes through
+    // verbatim.
+    expect(text).toContain("wants CHIP");
+    expect(guard.reveal(text)).toContain("Chip");
+    expect(guard.serialize()).toContain("Chip");
+  });
+
+  it("exempts the same span without a skip set (previous behavior)", async () => {
+    const guard = await createGuard({ ner: nerFindingChip(), allowList: ["CHIP"] });
+    const { text } = await guard.protect("my son Chip");
+    expect(text).toBe("my son Chip");
+    expect(guard.reveal(text)).toBe("my son Chip");
   });
 });

@@ -72,17 +72,31 @@ export function applyPolicy(spans: readonly Span[], keepLabels: ReadonlySet<PiiL
  * Since the list itself comes from the calling app, this can never silently
  * weaken the default-deny policy — an omitted or empty list changes nothing.
  *
+ * `skipLabels` is the labels the list never exempts. A short entry such as
+ * "CHIP" also matches a person's given name, and this function does not know
+ * a name from a program: without a skip set, a detected "Chip" (GIVEN_NAME)
+ * whose text equals "CHIP" would go out verbatim, past the redaction the
+ * whole guard exists to enforce. A caller that allows such terms should pass
+ * the person-name labels here (GIVEN_NAME, SURNAME) so a span carrying one of
+ * them is always redacted, entry or not.
+
  * Match whole spans, never substrings: an entry matched inside a larger span
  * would let the surrounding bytes (possibly real PII) through, against
  * Presidio's "whole finding is dropped" semantics and AWS Macie's
  * "text that exactly matches an entry" definition.
  */
-export function dropAllowListed(spans: readonly Span[], allowList: readonly string[] = []): Span[] {
-  const allowed = new Set(
-    allowList
-      .map((term) => term.trim().toLowerCase())
-      .filter((term) => term.length > 0),
-  );
-  if (allowed.size === 0) return [...spans];
-  return spans.filter((span) => !allowed.has(span.text.toLowerCase()));
+export function dropAllowListed(
+  spans: readonly Span[],
+  allowList: readonly string[] = [],
+  skipLabels: ReadonlySet<PiiLabel> = new Set<PiiLabel>(),
+): Span[] {
+	const allowed = new Set(
+		allowList
+			.map((term) => term.trim().toLowerCase())
+			.filter((term) => term.length > 0),
+	);
+	if (allowed.size === 0) return [...spans];
+	return spans.filter(
+		(span) => skipLabels.has(span.label) || !allowed.has(span.text.toLowerCase()),
+	);
 }
