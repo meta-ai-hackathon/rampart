@@ -765,26 +765,33 @@ def private_key_spans(text: str) -> list[tuple[int, int]]:
 
 # Private keys go first (private_key_spans), then these: tokens, then
 # personal data. High-precision patterns only, in this order, so that no
-# replacement text can match a later pattern.
+# replacement text can match a later pattern. A token may start right after
+# a digit, the way one stuck to the end of an SSN or a card number does, so
+# it goes in the first pass and not only once that number's marker stands
+# before it. A letter or an underscore before it still keeps the tail of a
+# longer name out. The JWT pattern comes after the SSNs and card numbers
+# instead, where their marker gives it that boundary: a digit before eyJ
+# would make each eyJ in a long base64 run a new start that reads to the end
+# of the run, and the scan would grow with the square of the run.
 DETECTORS: tuple[_Detector, ...] = (
     _Detector(
         "api key",
         re.compile(
-            r"\b(?:sk-ant-[A-Za-z0-9_-]{16,}|sk-(?:proj-)?[A-Za-z0-9_-]{32,}"
+            r"(?<![^\W\d])(?:sk-ant-[A-Za-z0-9_-]{16,}|sk-(?:proj-)?[A-Za-z0-9_-]{32,}"
             r"|(?:sk|rk)_live_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{35})"
         ),
     ),
     _Detector(
         "access token",
         re.compile(
-            r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}"
+            r"(?<![^\W\d])(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}"
             r"|xox[abposr]-[A-Za-z0-9-]{10,}|(?:AKIA|ASIA)[0-9A-Z]{16}\b)"
         ),
     ),
-    _Detector("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")),
     _Detector("url credentials", re.compile(r"(?<=://)[^\s:/@\[\]]+:[^\s@/\[\]]+(?=@)")),
     _Detector("ssn", re.compile(r"(?<![\d-])\d{3}-\d{2}-\d{4}(?![\d-])")),
     _Detector("card number", re.compile(r"(?<![\d-])\d(?:[ -]?\d){12,18}(?![\d-])"), _luhn_ok),
+    _Detector("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")),
     _Detector(
         "phone number",
         re.compile(r"(?<![\w.+-])(?:\+?1[ .-]?)?(?:\(\d{3}\)|\d{3})[ .-]\d{3}[ .-]\d{4}(?![\w-])"),
