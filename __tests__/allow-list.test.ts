@@ -1,7 +1,48 @@
 import { describe, expect, it } from "vitest";
 import { createGuard, type NerDetector } from "../src/guard";
 import { dropAllowListed } from "../src/policy";
-import type { Span } from "../src/types";
+import type { PiiLabel, Span } from "../src/types";
+
+/**
+ * Every member of PiiLabel, as a runtime list. The exhaustiveness check
+ * below makes a forgotten member a type error here, so a new label stays
+ * covered by the skip-label tests.
+ */
+const PII_LABELS: readonly PiiLabel[] = [
+  "SSN",
+  "CREDIT_CARD",
+  "IP_ADDRESS",
+  "GIVEN_NAME",
+  "SURNAME",
+  "EMAIL",
+  "PHONE",
+  "URL",
+  "TAX_ID",
+  "BANK_ACCOUNT",
+  "ROUTING_NUMBER",
+  "GOVERNMENT_ID",
+  "PASSPORT",
+  "DRIVERS_LICENSE",
+  "BUILDING_NUMBER",
+  "STREET_NAME",
+  "SECONDARY_ADDRESS",
+  "CITY",
+  "STATE",
+  "ZIP_CODE",
+];
+const ALL_COVERED: Record<PiiLabel, true> = Object.fromEntries(
+  PII_LABELS.map((label) => [label, true] as const),
+) as Record<PiiLabel, true>;
+/**
+ * Compile-time: PII_LABELS must cover every member of PiiLabel exactly
+ * once, so the tests below stay exhaustive as the label set grows.
+ */
+describe("PII_LABELS", () => {
+  it("lists every PiiLabel member exactly once", () => {
+    expect(new Set(PII_LABELS).size).toBe(PII_LABELS.length);
+    expect([...PII_LABELS].sort()).toEqual(Object.keys(ALL_COVERED).sort());
+  });
+});
 
 describe("dropAllowListed", () => {
   function span(overrides: Partial<Span> & { start: number; end: number; text: string }): Span {
@@ -102,5 +143,72 @@ describe("createGuard allowList", () => {
     const guard = await createGuard({ ner });
     const { text } = await guard.protect("does Medicare cover this?");
     expect(text).toBe("does [GIVEN_NAME_1] cover this?");
+  });
+});
+
+describe("dropAllowListed skipLabels", () => {
+  function span(overrides: Partial<Span> & { start: number; end: number; text: string }): Span {
+    return { label: "GIVEN_NAME", score: 1, source: "ner", ...overrides };
+  }
+
+  it("keeps a person-name span whose text equals an entry when its label is excluded", () => {
+    // "my son Chip": Rampart finds "Chip" as GIVEN_NAME and the entry "CHIP"
+    // equals its text. Without the skip set the exemption would necessarily
+    // also pass the name through, so the caller excludes person-name labels.
+    const spans = [
+      span({ start: 7, end: 11, text: "Chip" }),
+      { label: "TAX_ID", score: 1, source: "ner", start: 15, end: 19, text: "CHIP" } as Span,
+    ];
+    const out = dropAllowListed(spans, ["CHIP"], new Set<PiiLabel>(["GIVEN_NAME", "SURNAME"]));
+    expect(out.map((s) => s.text)).toEqual(["Chip"]);
+  });
+
+  it("exempts every label text-match when no label is excluded (default unchanged)", () => {
+    const spans = [...PII_LABELS].map((label, i) =>
+      ({ label, score: 1, source: "ner", start: i * 4, end: i * 4 + 4, text: "CHIP" } as Span),
+    );
+    expect(dropAllowListed(spans, ["chip"])).toEqual([]);
+  });
+
+  it("keeps only the excluded labels' spans, across every label", () => {
+    const skips = new Set<PiiLabel>(["GIVEN_NAME", "SURNAME"]);
+    const spans = [...PII_LABELS].map((label, i) =>
+      ({ label, score: 1, source: "ner", start: i * 4, end: i * 4 + 4, text: "CHIP" } as Span),
+    );
+    const out = dropAllowListed(spans, ["CHIP"], skips);
+    expect(out.map((s) => s.label).sort()).toEqual(["GIVEN_NAME", "SURNAME"]);
+  });
+});
+
+describe("createGuard allowListSkipLabels", () => {
+  function nerFindingChip(): NerDetector {
+    return async (text) => {
+      const at = text.indexOf("Chip");
+      return at < 0
+        ? []
+        : [{ start: at, end: at + 4, label: "GIVEN_NAME", score: 0.9, source: "ner", text: "Chip" }];
+    };
+  }
+
+  it("redacts a person-name span that matches an allow-list entry when its label is excluded", async () => {
+    const guard = await createGuard({
+      ner: nerFindingChip(),
+      allowList: ["CHIP"],
+      allowListSkipLabels: ["GIVEN_NAME", "SURNAME"],
+    });
+    const { text } = await guard.protect("my son Chip wants CHIP");
+    expect(text).toContain("[GIVEN_NAME_1]");
+    expect(text).not.toContain("Chip");
+    // The entry still works for program mentions the model does NOT tag as
+    // a person name: that span carries another label here.
+    expect(guard.reveal(text)).toContain("Chip");
+    expect(guard.serialize()).toContain("Chip");
+  });
+
+  it("exempts the same span without a skip set (previous behavior)", async () => {
+    const guard = await createGuard({ ner: nerFindingChip(), allowList: ["CHIP"] });
+    const { text } = await guard.protect("my son Chip");
+    expect(text).toBe("my son Chip");
+    expect(guard.reveal(text)).toBe("my son Chip");
   });
 });
