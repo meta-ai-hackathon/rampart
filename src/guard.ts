@@ -25,7 +25,12 @@ import { loadNerClassifier, detectNer, RAMPART_MODEL_ID, type NerOptions } from 
 import { createWorkerClassifier, type WorkerMessagePort } from "./ner/worker";
 import { premask, projectMaskedSpan } from "./premask";
 import { createRevealTransform } from "./streaming";
-import { SessionEntityTable, type PlaceholderAliases, type ScrubResult } from "./session";
+import {
+  SessionEntityTable,
+  type PlaceholderAliases,
+  type ScrubResult,
+  type SerializedSessionEntityTable,
+} from "./session";
 import { resolveKeepLabels, type PiiLabel, type Span } from "./types";
 
 /** An async contextual detector. Matches both the in-process and worker forms. */
@@ -43,6 +48,21 @@ export interface GuardOptions {
   readonly aliases?: PlaceholderAliases;
   /** Labels to preserve; defaults to `{CITY, STATE, ZIP_CODE}`. */
   readonly keepLabels?: readonly PiiLabel[];
+  /**
+   * Restore the session entity table from
+   * {@link SessionEntityTable.deserialize} output (`serialize()` /
+   * `serializeObject()`) so placeholder identity survives a page reload or
+   * app restart.
+   *
+   * Warning: A serialized table contains raw PII — it is the substitution map
+   * Rampart exists to keep on-device. Only ever pass data that was
+   * decrypted from on-device storage using the encryption the
+   * {@link SerializedSessionEntityTable} warning requires (AES-256-GCM,
+   * fresh IV per write, device-only non-extractable key); never fetch it
+   * from, or send it to, a server, and never log it. Restore with the
+   * same `aliases` / `keepLabels` the original guard used.
+   */
+  readonly session?: string | SerializedSessionEntityTable;
   /**
    * When `true`, skip the structured-PII premask before the model. Required for
    * a model trained without prefilter (no-prefilter ablation) whose classes
@@ -67,7 +87,7 @@ export interface GuardOptions {
   readonly minScore?: number;
 }
 
-type ChatGuardConfig = Pick<GuardOptions, "ner" | "aliases" | "keepLabels" | "noPrefilter">;
+type ChatGuardConfig = Pick<GuardOptions, "ner" | "aliases" | "keepLabels" | "noPrefilter" | "session">;
 
 export class ChatGuard {
   private readonly table: SessionEntityTable;
@@ -75,7 +95,11 @@ export class ChatGuard {
   private readonly noPrefilter: boolean;
 
   constructor(config: ChatGuardConfig = {}) {
-    this.table = new SessionEntityTable(config.aliases, resolveKeepLabels(config.keepLabels));
+    const keepLabels = resolveKeepLabels(config.keepLabels);
+    this.table =
+      config.session !== undefined
+        ? SessionEntityTable.deserialize(config.session, config.aliases, keepLabels)
+        : new SessionEntityTable(config.aliases, keepLabels);
     this.ner = config.ner;
     this.noPrefilter = config.noPrefilter ?? false;
   }
@@ -109,6 +133,27 @@ export class ChatGuard {
   /** Restore real values in a complete (non-streaming) assistant reply. */
   reveal(reply: string): string {
     return this.table.rehydrate(reply);
+  }
+
+  /**
+   * Export the session entity table (see {@link SessionEntityTable.serialize}).
+   * Warning: The result contains raw PII; persist it only in the encrypted
+   * form the {@link SerializedSessionEntityTable} warning requires
+   * (AES-256-GCM with a fresh IV per write, device-only non-extractable
+   * key), keep it on the device, and never send or log it. Restore by
+   * passing it as `session` to {@link createGuard}
+   */
+  serialize(): string {
+    return this.table.serialize();
+  }
+
+  /**
+   * Object form of {@link serialize}. Same handling rules apply: it
+   * contains raw PII and must be encrypted (AES-256-GCM, fresh IV per
+   * write, device-only non-extractable key) before it is stored anywhere.
+   */
+  serializeObject(): SerializedSessionEntityTable {
+    return this.table.serializeObject();
   }
 
   /**
@@ -159,12 +204,19 @@ async function buildNer(options: NerLoadOptions): Promise<NerDetector> {
  * true` to skip NER, or `ner` to inject a custom detector.
  */
 export async function createGuard(options: GuardOptions = {}): Promise<ChatGuard> {
-  const { aliases = DEFAULT_ALIASES, keepLabels, noPrefilter, ner, heuristicsOnly, ...nerLoad } = options;
+  const { aliases = DEFAULT_ALIASES, keepLabels, noPrefilter, session, ner, heuristicsOnly, ...nerLoad } = options;
+
+  // Fail fast on a malformed session before paying for the NER model load;
+  // ChatGuard's constructor is still the single restore point and
+  // re-validates, so the second deserialize is idempotent.
+  if (session !== undefined) {
+    SessionEntityTable.deserialize(session, aliases, resolveKeepLabels(keepLabels));
+  }
 
   let detector = ner;
   if (detector === undefined && heuristicsOnly !== true) {
     detector = await buildNer(nerLoad);
   }
 
-  return new ChatGuard({ ner: detector, aliases, keepLabels, noPrefilter });
+  return new ChatGuard({ ner: detector, aliases, keepLabels, noPrefilter, session });
 }
