@@ -81,6 +81,13 @@ describe("SessionEntityTable serialize/deserialize", () => {
       { label: "EMAIL", value: "a@B.c", token: "[EMAIL_2]" },
     ] })],
     ["bad counter", JSON.stringify({ version: 1, entries: [], counters: { EMAIL: -1 } })],
+    ["root not an object", JSON.stringify(42)],
+    ["entry not an object", JSON.stringify({ version: 1, entries: ["nope"] })],
+    ["counters not an object", JSON.stringify({ version: 1, entries: [], counters: [] })],
+    ["fractional counter", JSON.stringify({ version: 1, entries: [], counters: { EMAIL: 1.5 } })],
+    ["counter name with digits", JSON.stringify({ version: 1, entries: [], counters: { EMAIL2: 1 } })],
+    ["zero ordinal", JSON.stringify({ version: 1, entries: [{ label: "EMAIL", value: "a@b.c", token: "[EMAIL_0]" }] })],
+    ["huge ordinal", JSON.stringify({ version: 1, entries: [{ label: "EMAIL", value: "a@b.c", token: "[EMAIL_999999999999999999999999999999]" }] })],
   ])("throws on %s", (_name, payload) => {
     expect(() => SessionEntityTable.deserialize(payload)).toThrow(/Invalid serialized session table/);
   });

@@ -51,14 +51,37 @@ const PLACEHOLDER_TOKEN = /^\[[A-Z][A-Z_]*_\d+\]$/;
 /** Captures the display name and ordinal of a minted token: `[NAME_12]`. */
 const TOKEN_PARTS = /^\[([A-Z][A-Z_]*)_(\d+)\]$/;
 
-/** Every label the table can store, mirrored from {@link PiiLabel} so
- * deserialization can reject unknown labels without trusting the payload. */
-const PII_LABELS: ReadonlySet<string> = new Set<string>([
-  "SSN", "CREDIT_CARD", "IP_ADDRESS", "GIVEN_NAME", "SURNAME", "EMAIL",
-  "PHONE", "URL", "TAX_ID", "BANK_ACCOUNT", "ROUTING_NUMBER",
-  "GOVERNMENT_ID", "PASSPORT", "DRIVERS_LICENSE", "BUILDING_NUMBER",
-  "STREET_NAME", "SECONDARY_ADDRESS", "CITY", "STATE", "ZIP_CODE",
-]);
+/**
+ * Every label the table can store, checked against {@link PiiLabel} so
+ * deserialization can reject unknown labels without trusting the payload.
+ * The Record form makes a label missing from this list a compile error,
+ * so a new {@link PiiLabel} member cannot silently start rejecting valid
+ * restored tables.
+ */
+const ALL_LABELS: Record<PiiLabel, true> = {
+  SSN: true,
+  CREDIT_CARD: true,
+  IP_ADDRESS: true,
+  GIVEN_NAME: true,
+  SURNAME: true,
+  EMAIL: true,
+  PHONE: true,
+  URL: true,
+  TAX_ID: true,
+  BANK_ACCOUNT: true,
+  ROUTING_NUMBER: true,
+  GOVERNMENT_ID: true,
+  PASSPORT: true,
+  DRIVERS_LICENSE: true,
+  BUILDING_NUMBER: true,
+  STREET_NAME: true,
+  SECONDARY_ADDRESS: true,
+  CITY: true,
+  STATE: true,
+  ZIP_CODE: true,
+};
+
+const PII_LABELS: ReadonlySet<string> = new Set(Object.keys(ALL_LABELS));
 
 /**
  * One restored mapping: the raw value behind a placeholder.
