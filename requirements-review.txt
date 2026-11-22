@@ -4,4 +4,4 @@
 anthropic==2.3.0
 # The SDK's HTTP client, pinned so the review job gets the same version
 # the tests ran. anthropic 2.3.0 accepts httpx2>=2.0.0,<3.
-httpx2==2.16.0
+httpx2==2.16.2
